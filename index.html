@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A4 Draw — Folders, Notebooks & A4 Whiteboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="logo">A4</div>
+        <div>
+          <h1>A4 Draw</h1>
+          <p>folders › notebooks › pages</p>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-head">
+          <span>📁 Folders</span>
+          <button id="btnNewFolder" class="mini-btn" title="New folder">+ New</button>
+        </div>
+        <div id="folderList" class="list"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-head">
+          <span id="notebookSectionTitle">📓 Notebooks</span>
+          <button id="btnNewNotebook" class="mini-btn" title="New notebook">+ New</button>
+        </div>
+        <div id="notebookList" class="list"></div>
+        <p id="noFolderHint" class="hint">Select or create a folder first.</p>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="btnExportData" class="ghost-btn">Export data</button>
+        <button id="btnImportData" class="ghost-btn">Import</button>
+        <input type="file" id="importFile" accept="application/json" hidden />
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main id="main">
+      <!-- Empty state -->
+      <div id="emptyState" class="empty">
+        <div class="empty-card">
+          <h2>Like a web whiteboard, but organized.</h2>
+          <ol>
+            <li><b>1.</b> Create a <b>Folder</b> (e.g. School, Work)</li>
+            <li><b>2.</b> Inside it, create a <b>Notebook</b></li>
+            <li><b>3.</b> Draw on <b>A4 pages</b>, add pages, erase.</li>
+          </ol>
+          <div class="empty-actions">
+            <button id="btnEmptyFolder" class="primary-btn">+ Create folder</button>
+            <button id="btnDemo" class="secondary-btn">Load demo content</button>
+          </div>
+          <p class="muted">Everything autosaves in your browser (localStorage). No login needed.</p>
+        </div>
+      </div>
+
+      <!-- Board view -->
+      <div id="boardView" class="hidden">
+        <header id="boardHeader">
+          <div>
+            <div id="crumb" class="crumb"></div>
+            <input id="notebookName" class="notebook-name" value="Untitled" />
+          </div>
+          <div class="header-actions">
+            <button id="btnPrevPage" title="Previous page">‹</button>
+            <span id="pageIndicator">Page 1 / 1</span>
+            <button id="btnNextPage" title="Next page">›</button>
+            <button id="btnAddPage" class="primary-btn small">+ Page</button>
+            <button id="btnDeletePage" class="danger-btn small">Delete page</button>
+          </div>
+        </header>
+
+        <div id="toolbar">
+          <div class="tool-group">
+            <button data-tool="pen" class="tool active" title="Pen (P)">✏️ Pen</button>
+            <button data-tool="eraser" class="tool" title="Eraser (E)">🧽 Eraser</button>
+          </div>
+          <div class="tool-group">
+            <label class="color-dots" id="colorDots"></label>
+            <input type="color" id="colorPicker" value="#111827" title="Custom color" />
+          </div>
+          <div class="tool-group">
+            <label>Size <input type="range" id="brushSize" min="1" max="30" value="3" /></label>
+            <span id="brushSizeVal">3px</span>
+            <label title="Use stylus / touch pressure to vary width"><input type="checkbox" id="pressureToggle" checked /> Pressure</label>
+          </div>
+          <div class="tool-group">
+            <button id="btnUndo" title="Undo (Ctrl+Z)">↩ Undo</button>
+            <button id="btnRedo" title="Redo (Ctrl+Y)">↪ Redo</button>
+            <button id="btnClear" title="Clear page">🗑 Clear</button>
+          </div>
+          <div class="tool-group">
+            <label title="Sheet background">📄 <select id="rulingSelect">
+              <option value="ruled">Ruled</option>
+              <option value="blank">Blank</option>
+              <option value="grid">Grid</option>
+              <option value="dotted">Dotted</option>
+            </select></label>
+          </div>
+          <div class="tool-group">
+            <button id="btnZoomOut" title="Zoom out">−</button>
+            <span id="zoomLabel" title="Zoom level">100%</span>
+            <button id="btnZoomIn" title="Zoom in">+</button>
+            <button id="btnZoomFit" title="Fit to width">Fit</button>
+          </div>
+          <div class="tool-group">
+            <button id="btnPng" title="Download current page as PNG">⬇ PNG</button>
+            <button id="btnPdf" title="Export whole notebook as A4 PDF">⬇ PDF</button>
+            <button id="btnPrint" title="Print">🖨 Print</button>
+          </div>
+        </div>
+
+        <div id="canvasWrap">
+          <div id="a4page">
+            <canvas id="ruledBg"></canvas>
+            <canvas id="board"></canvas>
+          </div>
+        </div>
+
+        <div id="pageStrip"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
