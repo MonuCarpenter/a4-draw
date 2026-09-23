@@ -80,7 +80,14 @@
 
         <div id="toolbar" class="dock">
           <div class="tool-group">
-            <button data-tool="pen" class="tool active" title="Pen (P)">✏️</button>
+            <button id="penBtn" data-tool="pen" class="tool active" title="Pen (P)">✒️</button>
+            <select id="penType" title="Pen type">
+              <option value="pen">Pen</option>
+              <option value="marker">Marker</option>
+              <option value="highlighter">Highlighter</option>
+              <option value="pencil">Pencil</option>
+              <option value="fountain">Fountain</option>
+            </select>
             <button data-tool="eraser" class="tool" title="Eraser (E)">🧽</button>
           </div>
           <div class="tool-group">
@@ -88,8 +95,8 @@
             <input type="color" id="colorPicker" value="#111827" title="Custom color" />
           </div>
           <div class="tool-group">
-            <label title="Brush size"><input type="range" id="brushSize" min="1" max="30" value="3" /></label>
-            <span id="brushSizeVal">3</span>
+            <label title="Brush size"><input type="range" id="brushSize" min="1" max="30" value="2" /></label>
+            <span id="brushSizeVal">2</span>
             <label title="Use stylus / touch pressure to vary width"><input type="checkbox" id="pressureToggle" checked /> P</label>
           </div>
           <div class="tool-group">

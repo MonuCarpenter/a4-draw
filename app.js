@@ -6,9 +6,22 @@ const COLORS = ['#111827', '#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#f59e0b'
 let state = load() || { folders: [], selectedFolderId: null, selectedNotebookId: null, pageIndex: 0 };
 let tool = 'pen';
 let color = COLORS[0];
-let penSize = 3;
+const PENS = {
+  pen: { icon: '✒️', size: 2 },
+  marker: { icon: '🖊️', size: 8 },
+  highlighter: { icon: '🖍️', size: 18 },
+  pencil: { icon: '✏️', size: 2 },
+  fountain: { icon: '🖋️', size: 4 }
+};
+let penVariant = 'pen';
+let penSizes = { pen: 2, marker: 8, highlighter: 18, pencil: 2, fountain: 4 };
 let eraserSize = 14;
-function currentSize() { return tool === 'eraser' ? eraserSize : penSize; }
+function currentSize() { return tool === 'eraser' ? eraserSize : penSizes[penVariant]; }
+function penWidthMult() {
+  if (tool === 'eraser') return 2.5;
+  if (tool === 'pen' && penVariant === 'pencil') return 0.8;
+  return 1;
+}
 function refreshSizeUI() {
   $('brushSize').value = currentSize();
   $('brushSizeVal').textContent = currentSize();
@@ -171,6 +184,12 @@ function pointPressure(pt) {
   return (typeof pt.p === 'number' && pt.p > 0) ? Math.min(1, Math.max(0.05, pt.p)) : 0.5;
 }
 
+function taperAt(i, n, taperLen) {
+  if (!taperLen) return 1;
+  const t = Math.min(1, Math.min(i, n - 1 - i) / taperLen);
+  return 0.12 + 0.88 * t * t;
+}
+
 function drawRuling(targetCanvas, ruling) {
   const c = targetCanvas.getContext('2d');
   const W = targetCanvas.width, H = targetCanvas.height;
@@ -215,7 +234,8 @@ function drawRuling(targetCanvas, ruling) {
 function paintStroke(c, s, W, H, scale, eraseMode) {
   const pts = s.points || [];
   if (!pts.length) return;
-  const base = s.size * scale * (s.tool === 'eraser' ? 2.5 : 1);
+  const pen = s.pen || 'pen';
+  const base = s.size * scale * (s.tool === 'eraser' ? 2.5 : pen === 'pencil' ? 0.8 : 1);
   if (eraseMode === 'destination-out') {
     c.save();
     c.globalCompositeOperation = 'destination-out';
@@ -223,23 +243,36 @@ function paintStroke(c, s, W, H, scale, eraseMode) {
   } else {
     const col = s.tool === 'eraser' ? '#ffffff' : s.color;
     c.strokeStyle = col; c.fillStyle = col;
+    c.globalAlpha = s.tool === 'pen' && pen === 'highlighter' ? 0.35 : s.tool === 'pen' && pen === 'pencil' ? 0.8 : 1;
   }
   c.lineCap = 'round'; c.lineJoin = 'round';
   if (pts.length === 1) {
-    const w = base * (0.35 + 0.65 * pointPressure(pts[0]));
+    const w = (pen === 'marker' || pen === 'highlighter') && s.tool === 'pen' ? base : base * (0.35 + 0.65 * pointPressure(pts[0]));
     c.beginPath();
     c.arc(pts[0].x * W, pts[0].y * H, w / 2, 0, Math.PI * 2);
     c.fill();
   } else {
-    for (let i = 1; i < pts.length; i++) {
+    const n = pts.length;
+    const sharp = s.tool === 'pen' && (pen === 'pen' || pen === 'pencil');
+    const taperLen = (sharp && n > 6) ? Math.min(14, Math.floor(n / 4)) : 0;
+    for (let i = 1; i < n; i++) {
       const avgP = (pointPressure(pts[i - 1]) + pointPressure(pts[i])) / 2;
-      c.lineWidth = Math.max(0.5, base * (0.35 + 0.65 * avgP));
+      let w = base;
+      if (s.tool === 'pen' && pen !== 'marker' && pen !== 'highlighter') w *= 0.35 + 0.65 * avgP;
+      if (sharp) w *= (taperAt(i - 1, n, taperLen) + taperAt(i, n, taperLen)) / 2;
+      if (s.tool === 'pen' && pen === 'fountain') {
+        const dx = (pts[i].x - pts[i - 1].x) * W;
+        const dy = (pts[i].y - pts[i - 1].y) * H;
+        w *= 0.25 + 0.75 * Math.abs(Math.sin(Math.atan2(dy, dx) - Math.PI / 4));
+      }
+      c.lineWidth = Math.max(0.5, w);
       c.beginPath();
       c.moveTo(pts[i - 1].x * W, pts[i - 1].y * H);
       c.lineTo(pts[i].x * W, pts[i].y * H);
       c.stroke();
     }
   }
+  c.globalAlpha = 1;
   if (eraseMode === 'destination-out') c.restore();
 }
 
@@ -293,6 +326,7 @@ function renderDots() {
 }
 function syncToolUI() {
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+  $('penType').classList.toggle('pen-on', tool === 'pen');
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -301,7 +335,7 @@ canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   drawing = true; activePointerId = e.pointerId;
   try { canvas.setPointerCapture(e.pointerId); } catch {}
-  currentStroke = { tool, color, size: currentSize(), points: [toNorm(e)] };
+  currentStroke = { tool, pen: penVariant, color, size: currentSize(), points: [toNorm(e)] };
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!drawing || !currentStroke || e.pointerId !== activePointerId) return;
@@ -329,12 +363,12 @@ canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false
 const ring = $('brushRing');
 function updateRing() {
   const r = canvas.getBoundingClientRect();
-  const eff = currentSize() * (tool === 'eraser' ? 2.5 : 1);
+  const eff = currentSize() * penWidthMult();
   const d = Math.max(6, eff * (r.width / CANVAS_W));
   ring.style.width = d + 'px';
   ring.style.height = d + 'px';
   ring.style.border = tool === 'eraser' ? '2px dashed #6b7280' : '2px solid ' + color;
-  ring.style.background = tool === 'eraser' ? 'rgba(107,114,128,.10)' : 'transparent';
+  ring.style.background = tool === 'eraser' ? 'rgba(107,114,128,.10)' : tool === 'pen' && penVariant === 'highlighter' ? color + '55' : 'transparent';
 }
 canvas.addEventListener('pointermove', (e) => {
   if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') { ring.style.display = 'none'; return; }
@@ -434,9 +468,14 @@ setMore(!!ui.moreOpen, false);
 $('colorPicker').oninput = (e) => { color = e.target.value; selectTool('pen'); redraw(); };
 $('brushSize').oninput = (e) => {
   const v = +e.target.value;
-  if (tool === 'eraser') eraserSize = v; else penSize = v;
+  if (tool === 'eraser') eraserSize = v; else penSizes[penVariant] = v;
   $('brushSizeVal').textContent = v;
   updateRing();
+};
+$('penType').onchange = (e) => {
+  penVariant = e.target.value;
+  $('penBtn').textContent = PENS[penVariant].icon;
+  selectTool('pen');
 };
 $('pressureToggle').onchange = (e) => { pressureEnabled = e.target.checked; };
 $('rulingSelect').onchange = (e) => {

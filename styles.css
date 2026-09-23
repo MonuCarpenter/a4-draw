@@ -139,6 +139,7 @@ body {
   #board { cursor: none; }
 }
 #toolbar select, #dockMore select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; background: white; }
+#penType.pen-on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,70,229,.35); }
 #zoomLabel { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 #pageStrip {
