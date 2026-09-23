@@ -1,24 +1,28 @@
-// A4 Draw — folders > notebooks > A4 pages with pen/eraser
-// Storage: localStorage, coordinates normalized 0..1 for resolution independence
-
 const LS_KEY = 'a4-draw-v1';
-const CANVAS_W = 794;  // ~96dpi A4 width
-const CANVAS_H = 1123; // ~96dpi A4 height
+const CANVAS_W = 794;
+const CANVAS_H = 1123;
 const COLORS = ['#111827', '#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#f59e0b'];
 
 let state = load() || { folders: [], selectedFolderId: null, selectedNotebookId: null, pageIndex: 0 };
 let tool = 'pen';
 let color = COLORS[0];
-let brushSize = 3;
+let penSize = 3;
+let eraserSize = 14;
+function currentSize() { return tool === 'eraser' ? eraserSize : penSize; }
+function refreshSizeUI() {
+  $('brushSize').value = currentSize();
+  $('brushSizeVal').textContent = currentSize();
+  updateRing();
+}
+function selectTool(t) { tool = t; syncToolUI(); refreshSizeUI(); }
 let pressureEnabled = true;
 let zoom = 1;
 const ZOOM_MIN = 0.4, ZOOM_MAX = 3, ZOOM_BASE_W = 680;
 let drawing = false;
 let activePointerId = null;
 let currentStroke = null;
-let redoStack = []; // per page session
+let redoStack = [];
 
-// ---- helpers ----
 const $ = (id) => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2, 10);
 function save() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
@@ -39,7 +43,6 @@ function getPage() {
   return nb.pages[state.pageIndex];
 }
 
-// ---- sidebar rendering ----
 function renderSidebar() {
   const fl = $('folderList'); fl.innerHTML = '';
   state.folders.forEach(f => {
@@ -98,7 +101,6 @@ function renderSidebar() {
   });
 }
 
-// ---- board rendering ----
 function renderBoard() {
   const nb = getNotebook();
   const folder = getFolder();
@@ -111,7 +113,6 @@ function renderBoard() {
   if (document.activeElement !== $('notebookName')) $('notebookName').value = nb.name;
   $('pageIndicator').textContent = `Page ${state.pageIndex + 1} / ${nb.pages.length}`;
 
-  // page strip
   const strip = $('pageStrip'); strip.innerHTML = '';
   const ruling = getRuling(nb);
   if ($('rulingSelect').value !== ruling) $('rulingSelect').value = ruling;
@@ -135,7 +136,6 @@ function renderBoard() {
 
 function renderAll() { renderSidebar(); renderBoard(); }
 
-// ---- canvas (two layers: ruling bg + transparent stroke layer so eraser preserves lines) ----
 const canvas = $('board');
 const bgCanvas = $('ruledBg');
 
@@ -147,8 +147,8 @@ function resizeCanvasToA4() {
 function applyZoom() {
   const w = Math.round(ZOOM_BASE_W * zoom);
   $('a4page').style.width = w + 'px';
-  // keep A4 ratio: height follows from aspect-ratio CSS
   $('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  if (typeof updateRing === 'function' && $('brushRing')) updateRing();
 }
 function setZoom(z) {
   zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
@@ -157,13 +157,11 @@ function setZoom(z) {
 
 function toNorm(e) {
   const r = canvas.getBoundingClientRect();
-  // pressure: pen/stylus gives 0..1, mouse usually 0.5 while down, touch may give 0/1
   let p = 0.5;
   if (typeof e.pressure === 'number' && e.pressure > 0) p = e.pressure;
   else if (e.pointerType === 'mouse') p = 0.5;
   else p = 0.6;
   if (!pressureEnabled) p = 0.5;
-  // force 0..1
   p = Math.min(1, Math.max(0.05, p));
   return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, p };
 }
@@ -174,7 +172,6 @@ function pointPressure(pt) {
 }
 
 function drawRuling(targetCanvas, ruling) {
-  // paints white paper + ruled/grid/dotted background at full canvas res
   const c = targetCanvas.getContext('2d');
   const W = targetCanvas.width, H = targetCanvas.height;
   c.save();
@@ -182,23 +179,21 @@ function drawRuling(targetCanvas, ruling) {
   c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
   if (ruling === 'blank') { c.restore(); return; }
   if (ruling === 'ruled') {
-    // classic notebook: blue horizontal lines + red margin
     const topMargin = H * 0.09, bottomMargin = H * 0.05;
-    const gap = H * 0.032; // ~30 lines per page
+    const gap = H * 0.032;
     c.strokeStyle = '#a9c7ec'; c.lineWidth = Math.max(1, W * 0.0015);
     c.beginPath();
     for (let y = topMargin; y <= H - bottomMargin; y += gap) {
       c.moveTo(0, y); c.lineTo(W, y);
     }
     c.stroke();
-    // red margin line
     c.strokeStyle = '#f0a3a3'; c.lineWidth = Math.max(1.5, W * 0.0025);
     c.beginPath();
     const mx = W * 0.11;
     c.moveTo(mx, 0); c.lineTo(mx, H);
     c.stroke();
   } else if (ruling === 'grid') {
-    const step = W * 0.035; // square grid
+    const step = W * 0.035;
     c.strokeStyle = '#bcd3f0'; c.lineWidth = 1;
     c.beginPath();
     for (let x = 0; x <= W; x += step) { c.moveTo(x, 0); c.lineTo(x, H); }
@@ -218,7 +213,6 @@ function drawRuling(targetCanvas, ruling) {
 }
 
 function paintStroke(c, s, W, H, scale, eraseMode) {
-  // eraseMode: 'white' (legacy composite) or 'destination-out' (transparent layer)
   const pts = s.points || [];
   if (!pts.length) return;
   const base = s.size * scale * (s.tool === 'eraser' ? 2.5 : 1);
@@ -250,7 +244,6 @@ function paintStroke(c, s, W, H, scale, eraseMode) {
 }
 
 function drawStrokeLayer(targetCanvas, strokes) {
-  // transparent layer: pens paint, erasers destination-out (preserves ruling behind)
   const c = targetCanvas.getContext('2d');
   const W = targetCanvas.width, H = targetCanvas.height;
   const scale = W / CANVAS_W;
@@ -263,17 +256,14 @@ function drawStrokeLayer(targetCanvas, strokes) {
 }
 
 function drawComposite(targetCanvas, strokes, ruling) {
-  // single-canvas composite for thumbnails / PNG / PDF: white + ruling + strokes
   const W = targetCanvas.width, H = targetCanvas.height;
   drawRuling(targetCanvas, ruling || 'ruled');
-  // render strokes to offscreen transparent layer, then overlay (keeps ruling intact under eraser)
   const layer = document.createElement('canvas');
   layer.width = W; layer.height = H;
   drawStrokeLayer(layer, strokes);
   targetCanvas.getContext('2d').drawImage(layer, 0, 0);
 }
 
-// backward-compat alias (old calls without ruling default to ruled)
 function drawStrokes(targetCanvas, strokes, ruling) {
   drawComposite(targetCanvas, strokes, ruling || 'ruled');
 }
@@ -287,7 +277,6 @@ function redraw() {
   renderDots();
 }
 
-// tools UI
 function renderDots() {
   const wrap = $('colorDots'); if (wrap.dataset.built) {
     wrap.querySelectorAll('.dot').forEach(d => d.classList.toggle('active', d.dataset.c === color));
@@ -298,7 +287,7 @@ function renderDots() {
     const d = document.createElement('span');
     d.className = 'dot' + (c === color ? ' active' : '');
     d.dataset.c = c; d.style.background = c; d.title = c;
-    d.onclick = () => { color = c; tool = 'pen'; syncToolUI(); redraw(); };
+    d.onclick = () => { color = c; selectTool('pen'); redraw(); };
     wrap.appendChild(d);
   });
 }
@@ -306,23 +295,20 @@ function syncToolUI() {
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
 }
 
-// pointer drawing — single active pointer (basic touch + stylus pressure support)
 canvas.addEventListener('pointerdown', (e) => {
   const page = getPage(); if (!page) return;
-  if (drawing) return; // ignore second finger while drawing
+  if (drawing) return;
   e.preventDefault();
   drawing = true; activePointerId = e.pointerId;
   try { canvas.setPointerCapture(e.pointerId); } catch {}
-  currentStroke = { tool, color, size: brushSize, points: [toNorm(e)] };
+  currentStroke = { tool, color, size: currentSize(), points: [toNorm(e)] };
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!drawing || !currentStroke || e.pointerId !== activePointerId) return;
   e.preventDefault();
-  // use coalesced events for smoother lines on high-refresh touch/stylus
   const evts = (typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length)
     ? e.getCoalescedEvents() : [e];
   evts.forEach(ev => currentStroke.points.push(toNorm(ev)));
-  // live draw incrementally (stroke layer only — ruling stays on bg canvas)
   const page = getPage();
   drawStrokeLayer(canvas, [...(page.strokes || []), currentStroke]);
 });
@@ -331,18 +317,35 @@ function endStroke(e) {
   if (e && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
   drawing = false; activePointerId = null;
   const page = getPage();
-  // drop accidental single taps with no movement? keep them as dots — useful for touch
   if (currentStroke.points.length) { page.strokes.push(currentStroke); redoStack = []; }
   currentStroke = null;
   save(); renderBoard();
 }
 canvas.addEventListener('pointerup', endStroke);
 canvas.addEventListener('pointercancel', endStroke);
-// prevent touch scrolling / pinch interfering while drawing
 canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
-// ---- actions ----
+const ring = $('brushRing');
+function updateRing() {
+  const r = canvas.getBoundingClientRect();
+  const eff = currentSize() * (tool === 'eraser' ? 2.5 : 1);
+  const d = Math.max(6, eff * (r.width / CANVAS_W));
+  ring.style.width = d + 'px';
+  ring.style.height = d + 'px';
+  ring.style.border = tool === 'eraser' ? '2px dashed #6b7280' : '2px solid ' + color;
+  ring.style.background = tool === 'eraser' ? 'rgba(107,114,128,.10)' : 'transparent';
+}
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') { ring.style.display = 'none'; return; }
+  const wrap = $('a4page').getBoundingClientRect();
+  ring.style.left = (e.clientX - wrap.left) + 'px';
+  ring.style.top = (e.clientY - wrap.top) + 'px';
+  updateRing();
+  ring.style.display = 'block';
+});
+canvas.addEventListener('pointerleave', () => { ring.style.display = 'none'; });
+
 function requireNotebook() {
   if (!getNotebook()) { alert('Create/select a folder + notebook first.'); return false; }
   return true;
@@ -392,16 +395,55 @@ $('btnDeletePage').onclick = () => {
 $('btnPrevPage').onclick = () => { const nb = getNotebook(); if (!nb) return; state.pageIndex = (state.pageIndex - 1 + nb.pages.length) % nb.pages.length; redoStack = []; save(); renderBoard(); };
 $('btnNextPage').onclick = () => { const nb = getNotebook(); if (!nb) return; state.pageIndex = (state.pageIndex + 1) % nb.pages.length; redoStack = []; save(); renderBoard(); };
 
-document.querySelectorAll('.tool').forEach(b => b.onclick = () => { tool = b.dataset.tool; syncToolUI(); });
-$('colorPicker').oninput = (e) => { color = e.target.value; tool = 'pen'; syncToolUI(); redraw(); };
-$('brushSize').oninput = (e) => { brushSize = +e.target.value; $('brushSizeVal').textContent = brushSize + 'px'; };
+const UI_KEY = 'a4-draw-ui-v1';
+let ui = loadUi() || {};
+function loadUi() { try { return JSON.parse(localStorage.getItem(UI_KEY)); } catch { return null; } }
+function saveUi() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch {} }
+document.querySelectorAll('.tool').forEach(b => b.onclick = () => selectTool(b.dataset.tool));
+function setSidebar(collapsed, persist = true) {
+  document.getElementById('app').classList.toggle('sidebar-collapsed', collapsed);
+  $('btnShowSidebar').classList.toggle('hidden', !collapsed);
+  if (persist) { ui.sidebarCollapsed = collapsed; saveUi(); }
+}
+function toggleSidebar() {
+  setSidebar(!document.getElementById('app').classList.contains('sidebar-collapsed'));
+}
+$('btnSidebar').onclick = toggleSidebar;
+$('btnHideSidebar').onclick = () => setSidebar(true);
+$('btnShowSidebar').onclick = () => setSidebar(false);
+if (ui.sidebarCollapsed === undefined) setSidebar(window.innerWidth < 1100, false);
+else setSidebar(!!ui.sidebarCollapsed, false);
+window.addEventListener('resize', () => {
+  if (window.innerWidth < 860) setSidebar(true, false);
+});
+function setMore(open, persist = true) {
+  $('dockMore').classList.toggle('hidden', !open);
+  $('btnMore').classList.toggle('active', open);
+  if (persist) { ui.moreOpen = open; saveUi(); }
+}
+$('btnMore').onclick = (e) => {
+  e.stopPropagation();
+  setMore($('dockMore').classList.contains('hidden'));
+};
+document.addEventListener('pointerdown', (e) => {
+  if ($('dockMore').classList.contains('hidden')) return;
+  if (e.target.closest('#dockMore') || e.target.closest('#btnMore')) return;
+  setMore(false);
+});
+setMore(!!ui.moreOpen, false);
+$('colorPicker').oninput = (e) => { color = e.target.value; selectTool('pen'); redraw(); };
+$('brushSize').oninput = (e) => {
+  const v = +e.target.value;
+  if (tool === 'eraser') eraserSize = v; else penSize = v;
+  $('brushSizeVal').textContent = v;
+  updateRing();
+};
 $('pressureToggle').onchange = (e) => { pressureEnabled = e.target.checked; };
 $('rulingSelect').onchange = (e) => {
   const nb = getNotebook(); if (!nb) return;
   nb.ruling = e.target.value;
   save(); renderBoard();
 };
-// zoom: buttons + ctrl/cmd+wheel (pinch on trackpads sends wheel with ctrlKey)
 $('btnZoomIn').onclick = () => setZoom(zoom * 1.2);
 $('btnZoomOut').onclick = () => setZoom(zoom / 1.2);
 $('btnZoomFit').onclick = () => {
@@ -448,7 +490,6 @@ $('btnPrint').onclick = () => window.print();
 
 function exportPdfNotebook() {
   const nb = getNotebook(); if (!nb) return;
-  // local-only: render each A4 page to image, pack into one A4 PDF via jsPDF (CDN)
   if (!window.jspdf) {
     alert('PDF library not loaded (are you offline?). Falling back to Print → Save as PDF.');
     window.print();
@@ -493,7 +534,6 @@ $('importFile').addEventListener('change', (e) => {
 $('btnDemo').onclick = () => {
   const f = { id: uid(), name: 'Demo Folder', createdAt: Date.now(), notebooks: [] };
   const nb = { id: uid(), name: 'My First Notebook', createdAt: Date.now(), ruling: 'ruled', pages: [{ id: uid(), strokes: [] }, { id: uid(), strokes: [] }] };
-  // sample scribble on page 1
   nb.pages[0].strokes = [{
     tool: 'pen', color: '#4f46e5', size: 4,
     points: Array.from({ length: 40 }, (_, i) => ({ x: 0.15 + i * 0.015, y: 0.3 + Math.sin(i / 3) * 0.05, p: 0.4 + Math.abs(Math.sin(i / 5)) * 0.6 }))
@@ -504,21 +544,22 @@ $('btnDemo').onclick = () => {
   save(); renderAll();
 };
 
-// keyboard shortcuts
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     e.shiftKey ? $('btnRedo').click() : $('btnUndo').click();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); $('btnRedo').click(); }
-  else if (e.key.toLowerCase() === 'p') { tool = 'pen'; syncToolUI(); }
-  else if (e.key.toLowerCase() === 'e') { tool = 'eraser'; syncToolUI(); }
+  else if (e.key.toLowerCase() === 'p') { selectTool('pen'); }
+  else if (e.key.toLowerCase() === 'e') { selectTool('eraser'); }
   else if (e.key === '+' || e.key === '=') { if (getNotebook()) setZoom(zoom * 1.2); }
   else if (e.key === '-' || e.key === '_') { if (getNotebook()) setZoom(zoom / 1.2); }
   else if (e.key === '0') { if (getNotebook()) setZoom(1); }
+  else if (e.key === '\\') { toggleSidebar(); }
 });
 
-window.addEventListener('resize', () => { /* canvas is CSS-scaled, internal res fixed */ });
+window.addEventListener('resize', () => {});
 
 syncToolUI();
+refreshSizeUI();
 renderAll();

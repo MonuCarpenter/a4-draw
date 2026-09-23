@@ -8,7 +8,6 @@
 </head>
 <body>
   <div id="app">
-    <!-- Sidebar -->
     <aside id="sidebar">
       <div class="brand">
         <div class="logo">A4</div>
@@ -16,6 +15,7 @@
           <h1>A4 Draw</h1>
           <p>folders › notebooks › pages</p>
         </div>
+        <button id="btnHideSidebar" title="Hide sidebar">◀</button>
       </div>
 
       <div class="sidebar-section">
@@ -42,9 +42,8 @@
       </div>
     </aside>
 
-    <!-- Main -->
     <main id="main">
-      <!-- Empty state -->
+      <button id="btnShowSidebar" class="hidden" title="Show sidebar">☰</button>
       <div id="emptyState" class="empty">
         <div class="empty-card">
           <h2>Like a web whiteboard, but organized.</h2>
@@ -61,12 +60,14 @@
         </div>
       </div>
 
-      <!-- Board view -->
       <div id="boardView" class="hidden">
         <header id="boardHeader">
-          <div>
-            <div id="crumb" class="crumb"></div>
-            <input id="notebookName" class="notebook-name" value="Untitled" />
+          <div class="header-left">
+            <button id="btnSidebar" title="Toggle sidebar (\)">☰</button>
+            <div>
+              <div id="crumb" class="crumb"></div>
+              <input id="notebookName" class="notebook-name" value="Untitled" />
+            </div>
           </div>
           <div class="header-actions">
             <button id="btnPrevPage" title="Previous page">‹</button>
@@ -77,23 +78,28 @@
           </div>
         </header>
 
-        <div id="toolbar">
+        <div id="toolbar" class="dock">
           <div class="tool-group">
-            <button data-tool="pen" class="tool active" title="Pen (P)">✏️ Pen</button>
-            <button data-tool="eraser" class="tool" title="Eraser (E)">🧽 Eraser</button>
+            <button data-tool="pen" class="tool active" title="Pen (P)">✏️</button>
+            <button data-tool="eraser" class="tool" title="Eraser (E)">🧽</button>
           </div>
           <div class="tool-group">
             <label class="color-dots" id="colorDots"></label>
             <input type="color" id="colorPicker" value="#111827" title="Custom color" />
           </div>
           <div class="tool-group">
-            <label>Size <input type="range" id="brushSize" min="1" max="30" value="3" /></label>
-            <span id="brushSizeVal">3px</span>
-            <label title="Use stylus / touch pressure to vary width"><input type="checkbox" id="pressureToggle" checked /> Pressure</label>
+            <label title="Brush size"><input type="range" id="brushSize" min="1" max="30" value="3" /></label>
+            <span id="brushSizeVal">3</span>
+            <label title="Use stylus / touch pressure to vary width"><input type="checkbox" id="pressureToggle" checked /> P</label>
           </div>
           <div class="tool-group">
-            <button id="btnUndo" title="Undo (Ctrl+Z)">↩ Undo</button>
-            <button id="btnRedo" title="Redo (Ctrl+Y)">↪ Redo</button>
+            <button id="btnUndo" title="Undo (Ctrl+Z)">↩</button>
+            <button id="btnRedo" title="Redo (Ctrl+Y)">↪</button>
+          </div>
+          <button id="btnMore" title="More options">⋯</button>
+        </div>
+        <div id="dockMore" class="hidden">
+          <div class="tool-group">
             <button id="btnClear" title="Clear page">🗑 Clear</button>
           </div>
           <div class="tool-group">
@@ -112,8 +118,8 @@
           </div>
           <div class="tool-group">
             <button id="btnPng" title="Download current page as PNG">⬇ PNG</button>
-            <button id="btnPdf" title="Export whole notebook as A4 PDF">⬇ PDF</button>
-            <button id="btnPrint" title="Print">🖨 Print</button>
+            <button id="btnPdf" title="Export whole notebook as A4 PDF">PDF</button>
+            <button id="btnPrint" title="Print">🖨</button>
           </div>
         </div>
 
@@ -121,6 +127,7 @@
           <div id="a4page">
             <canvas id="ruledBg"></canvas>
             <canvas id="board"></canvas>
+            <div id="brushRing"></div>
           </div>
         </div>
 
