@@ -8,13 +8,14 @@ let tool = 'pen';
 let color = COLORS[0];
 const PENS = {
   pen: { icon: '✒️', size: 2 },
-  marker: { icon: '🖊️', size: 8 },
+  ball: { icon: '🖊️', size: 2 },
+  marker: { icon: '🖌️', size: 8 },
   highlighter: { icon: '🖍️', size: 18 },
   pencil: { icon: '✏️', size: 2 },
   fountain: { icon: '🖋️', size: 4 }
 };
 let penVariant = 'pen';
-let penSizes = { pen: 2, marker: 8, highlighter: 18, pencil: 2, fountain: 4 };
+let penSizes = { pen: 2, ball: 2, marker: 8, highlighter: 18, pencil: 2, fountain: 4 };
 let eraserSize = 14;
 function currentSize() { return tool === 'eraser' ? eraserSize : penSizes[penVariant]; }
 function penWidthMult() {
@@ -258,7 +259,8 @@ function paintStroke(c, s, W, H, scale, eraseMode) {
     for (let i = 1; i < n; i++) {
       const avgP = (pointPressure(pts[i - 1]) + pointPressure(pts[i])) / 2;
       let w = base;
-      if (s.tool === 'pen' && pen !== 'marker' && pen !== 'highlighter') w *= 0.35 + 0.65 * avgP;
+      if (s.tool === 'pen' && pen === 'ball') w *= 0.75 + 0.25 * avgP;
+      else if (s.tool === 'pen' && pen !== 'marker' && pen !== 'highlighter') w *= 0.35 + 0.65 * avgP;
       if (sharp) w *= (taperAt(i - 1, n, taperLen) + taperAt(i, n, taperLen)) / 2;
       if (s.tool === 'pen' && pen === 'fountain') {
         const dx = (pts[i].x - pts[i - 1].x) * W;
